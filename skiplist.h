@@ -2,7 +2,7 @@
  * @Author: liuxin
  * @Date:   2022-07-31 12:03:25
  * @Last Modified by:   liuxin
- * @Last Modified time: 2022-08-12 17:11:28
+ * @Last Modified time: 2022-08-13 16:15:20
  */
 #include <stdint.h>
 #include <fstream>
@@ -12,6 +12,7 @@
 #ifndef __SKIPLIST_H__
 #define __SKIPLIST_H__
 
+#define DUMPFIEL "store/dumpFile"
 std::mutex mtx;
 template<typename K, typename V>
 class Skiplist
@@ -127,7 +128,7 @@ int Skiplist<K, V>::insert_element(const K key, const V value) {
             inserted_node->forward[i] = update[i]->forward[i];
             update[i]->forward[i] = inserted_node;
         }
-        std::cout << "Successfully inserted key:" << key << ", value:" << value << std::endl;
+        std::cout << "Successfully inserted element with key:" << key << ", value:" << value << std::endl;
         element_count++;
     }
     mtx.unlock();
@@ -135,27 +136,109 @@ int Skiplist<K, V>::insert_element(const K key, const V value) {
 }
 
 template<typename K, typename V>
-void Skiplist<K, V>::dumpToFile() {
+void Skiplist<K, V>::delete_element(K key) {
+    mtx.lock();
+    Node<K, V> *current = this->header; 
+    Node<K, V> *update[max_level+1];
+    memset(update, 0, sizeof(Node<K, V>*)*(max_level+1));
 
-    std::cout << "---Dump data in memory to file---" << std::endl;
-    file_writer.open("./store/dumpFile");
+    // start from highest level of skip list
+    for (int i = current_level; i >= 0; i--) {
+        while (current->forward[i] !=NULL && current->forward[i]->get_key() < key) {
+            current = current->forward[i];
+        }
+        update[i] = current;
+    }
+
+    current = current->forward[0];
+    if (current != NULL && current->get_key() == key) {
+       
+        // start for lowest level and delete the current node of each level
+        for (int i = 0; i <= current_level; i++) {
+
+            // if at level i, next node is not target node, break the loop.
+            if (update[i]->forward[i] != current) 
+                break;
+
+            update[i]->forward[i] = current->forward[i];
+        }
+
+        // Remove levels which have no elements
+        while (current_level > 0 && header->forward[current_level] == nullptr) {
+            current_level --; 
+        }
+
+        std::cout << "Successfully deleted element with key:"<< key << std::endl;
+        current_level--;
+        
+        mtx.unlock();
+        return;
+    }
+    std::cout << "Failed deleted, No element with key: "<< key << std::endl;
+    mtx.unlock();
+    return;
+}
+
+template<typename K, typename V>
+bool Skiplist<K, V>::search_element(K key) {
+    Node<K, V> *current = this->header; 
+
+    // start from highest level of skip list
+    for (int i = current_level; i >= 0; i--) {
+        while (current->forward[i] !=NULL && current->forward[i]->get_key() < key) {
+            current = current->forward[i];
+        }
+    }
+
+    current = current->forward[0];
+    if (current != NULL && current->get_key() == key) {
+
+        std::cout << "Successfully found element with key:"<< key << ", value:"<< current->get_value() << std::endl;
+        return true;
+    }
+    std::cout << "Failed searched, No element with key: "<< key << std::endl;
+    return false;
+}
+
+template<typename K, typename V>
+void Skiplist<K, V>::display_list() {
+    std::cout << "---Start display the SkipList---" << std::endl;
+    for (int i = current_level; i > 0; i--) {
+        Node<K, V> * node = this->header->forward[i];
+        std::cout << "Level " << i << ": ";
+        while (node != nullptr) {
+            std::cout << node->get_key() << ":" << node->get_value() << "; ";
+            node = node->forward[i];
+        }
+        std::cout << std::endl;
+    }
+
+    std::cout << "---Finish display the SkipList---\n" << std::endl;
+
+}
+
+template<typename K, typename V>
+void Skiplist<K, V>::dumpToFile() {
+    std::cout << "---Start dump data in memory to file---" << std::endl;
+    file_writer.open(DUMPFIEL);
     Node<K, V> *node = this->header->forward[0];
 
     while (node != nullptr) {
-        file_writer << node->get_key() << ":" << node->get_value() << ";\n";
+        file_writer << node->get_key() << ":" << node->get_value() << "\n";
         std::cout << node->get_key() << ":" << node->get_value() << ";\n";
         node = node->forward[0];
     }
 
     file_writer.flush();
     file_writer.close();
+    std::cout << "---Finish dump data in memory to file---\n" << std::endl;
     return;
 }
 
 template<typename K, typename V>
 void Skiplist<K, V>::loadFromFile() {
-    std::cout << "---Load data from file---" << std::endl;
-    file_reader.open("./store.dumpFile");
+    std::cout << "---Start load data from file---" << std::endl;
+    file_reader.open(DUMPFIEL);
 
     std::string one_line;
     std::string* key = new std::string();
@@ -168,9 +251,10 @@ void Skiplist<K, V>::loadFromFile() {
         int key_int = std::stoi(*key);
         insert_element(key_int, *value);
         // insert_element(*key, *value);
-        std::cout << "key:" << key << "value:" << *value << std::endl;
+        // std::cout << "key:" << key << "value:" << *value << std::endl;
     }
     file_reader.close();
+    std::cout << "---Finish load data from file---\n" << std::endl;
 }
 
 template<typename K, typename V>
